@@ -66,6 +66,17 @@ static bool has_update;
 static bool has_update60;
 static bool has_draw;
 
+typedef enum
+{
+    SCALE_INTEGER = 0,
+    SCALE_FIT,
+    SCALE_STRETCH,
+    SCALE_MODE_COUNT
+} scale_mode_t;
+
+static scale_mode_t scale_mode = SCALE_INTEGER;
+static bool linear_filter = false;
+
 static SDL_Texture* overlay;
 
 SDL_FRect cart_rect;
@@ -888,6 +899,24 @@ static void render_cartridge(SDL_Renderer* renderer)
 #endif
 }
 
+static void apply_texture_scale_mode(SDL_Texture* tex)
+{
+    if (!tex)
+    {
+        return;
+    }
+#ifdef USE_SDL2
+    SDL_ScaleMode mode = linear_filter ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
+    if (SDL_SetTextureScaleMode(tex, mode) < 0)
+#else
+    SDL_ScaleMode mode = linear_filter ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST;
+    if (!SDL_SetTextureScaleMode(tex, mode))
+#endif
+    {
+        SDL_Log("Couldn't set texture scale mode: %s", SDL_GetError());
+    }
+}
+
 void handle_resize(SDL_Renderer* renderer) {
     int native_w, native_h;
 #ifdef USE_SDL2
@@ -896,30 +925,50 @@ void handle_resize(SDL_Renderer* renderer) {
     SDL_GetRenderOutputSize(renderer, &native_w, &native_h);
 #endif
 
-    int base_w = 160;
-    int base_h = 205;
+    float base_w = 160.0f;
+    float base_h = 205.0f;
 
-    int scale_x = native_w / base_w;
-    int scale_y = native_h / base_h;
+    float scale_x = 1.0f;
+    float scale_y = 1.0f;
 
-    int scale = (scale_x < scale_y) ? scale_x : scale_y;
-    if (scale < 1)
+    if (scale_mode == SCALE_INTEGER)
     {
-        scale = 1;
+        int sx = native_w / 160;
+        int sy = native_h / 205;
+        int scale = (sx < sy) ? sx : sy;
+        if (scale < 1)
+        {
+            scale = 1;
+        }
+        scale_x = (float)scale;
+        scale_y = (float)scale;
+    }
+    else if (scale_mode == SCALE_FIT)
+    {
+        float sx = (float)native_w / base_w;
+        float sy = (float)native_h / base_h;
+        float scale = (sx < sy) ? sx : sy;
+        scale_x = scale;
+        scale_y = scale;
+    }
+    else // SCALE_STRETCH
+    {
+        scale_x = (float)native_w / base_w;
+        scale_y = (float)native_h / base_h;
     }
 
-    int window_w = base_w * scale;
-    int window_h = base_h * scale;
+    float window_w = base_w * scale_x;
+    float window_h = base_h * scale_y;
 
-    cart_rect.x = ((float)(native_w - window_w) + 0.5f) / 2.f;
-    cart_rect.y = ((float)(native_h - window_h) + 0.5f) / 2.f;
-    cart_rect.w = (float)window_w;
-    cart_rect.h = (float)window_h;
+    cart_rect.x = ((float)native_w - window_w) * 0.5f;
+    cart_rect.y = ((float)native_h - window_h) * 0.5f;
+    cart_rect.w = window_w;
+    cart_rect.h = window_h;
 
-    screen_rect.x = cart_rect.x + (scale * 16);
-    screen_rect.y = cart_rect.y + (scale * 24);
-    screen_rect.w = (float)(scale * 128);
-    screen_rect.h = (float)(scale * 128);
+    screen_rect.x = cart_rect.x + (scale_x * 16.0f);
+    screen_rect.y = cart_rect.y + (scale_y * 24.0f);
+    screen_rect.w = scale_x * 128.0f;
+    screen_rect.h = scale_y * 128.0f;
 
 #ifdef __DJGPP__
     screen_rect.y += 1;
@@ -1227,6 +1276,37 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
 #else
             SDL_Keycode key = event->key.key;
 #endif
+            if (!event->key.repeat)
+            {
+                if (key == SDLK_F2)
+                {
+                    static const char* const mode_names[] = { "integer", "aspect-fit", "stretch" };
+                    scale_mode = (scale_mode + 1) % SCALE_MODE_COUNT;
+                    SDL_Log("Scaling mode: %s", mode_names[scale_mode]);
+                    handle_resize(renderer);
+                    if (state == STATE_MENU)
+                    {
+                        render_cartridge(renderer);
+                        SDL_RenderPresent(renderer);
+                    }
+                    return true;
+                }
+                else if (key == SDLK_F3)
+                {
+                    linear_filter = !linear_filter;
+                    SDL_Log("Texture filter: %s", linear_filter ? "linear" : "nearest");
+                    apply_texture_scale_mode(get_cart()->image);
+                    apply_texture_scale_mode(overlay);
+                    set_screen_scale_mode(linear_filter);
+                    if (state == STATE_MENU)
+                    {
+                        render_cartridge(renderer);
+                        SDL_RenderPresent(renderer);
+                    }
+                    return true;
+                }
+            }
+
             if (state == STATE_MENU)
             {
                 if (event->key.repeat) // No key repeat.

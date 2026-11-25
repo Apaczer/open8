@@ -152,6 +152,24 @@ void destroy_memory(void)
 	}
 }
 
+void set_screen_scale_mode(bool linear)
+{
+	if (!screen)
+	{
+		return;
+	}
+#ifdef USE_SDL2
+	SDL_ScaleMode mode = linear ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
+	if (SDL_SetTextureScaleMode(screen, mode) < 0)
+#else
+	SDL_ScaleMode mode = linear ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST;
+	if (!SDL_SetTextureScaleMode(screen, mode))
+#endif
+	{
+		SDL_Log("Couldn't set texture scale mode: %s", SDL_GetError());
+	}
+}
+
 void update_from_virtual_memory(SDL_Renderer* renderer)
 {
 	/* Sprite sheet.

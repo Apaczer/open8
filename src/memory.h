@@ -27,6 +27,7 @@ bool init_memory(SDL_Renderer* renderer);
 void reset_memory(void);
 void reset_draw_state(void);
 void destroy_memory(void);
+void set_screen_scale_mode(bool linear);
 void update_from_virtual_memory(SDL_Renderer* renderer);
 uint32_t crc32(const uint8_t* data, size_t start, size_t length);
 void init_crc32();
