@@ -7,10 +7,16 @@ project(tests C)
 set(EXPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${EXPORT_DIR}")
 
+option (USE_SDL2 "Build with SDL2 instead of SDL3" OFF)
+
 set(CMAKE_C_STANDARD 99)
 
-include(get_SDL3)
-get_SDL3("3.4.10")
+if (USE_SDL2)
+  find_package(SDL2 REQUIRED)
+else()
+  include(get_SDL3)
+  get_SDL3("3.4.10")
+endif()
 
 set(PICO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
@@ -51,10 +57,22 @@ set(base_sources
 set(tests_sources ${CMAKE_CURRENT_SOURCE_DIR}/tests.c)
 
 add_executable(tests ${base_sources} ${tests_sources})
-target_link_libraries(tests PRIVATE ${SDL3_LIBRARIES})
+if (USE_SDL2)
+  target_compile_definitions(tests PRIVATE USE_SDL2)
+  if (TARGET SDL2::SDL2main)
+    target_link_libraries(tests PRIVATE SDL2::SDL2main)
+  endif()
+  target_link_libraries(tests PRIVATE SDL2::SDL2)
+  if (UNIX)
+    target_link_libraries(tests PRIVATE m)
+  endif()
+else()
+  target_link_libraries(tests PRIVATE ${SDL3_LIBRARIES})
+endif()
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 
-include_directories(
-  "${CMAKE_CURRENT_SOURCE_DIR}/../src"
-  "${sdl3_SOURCE_DIR}/include")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../src")
+if (NOT USE_SDL2)
+  include_directories("${sdl3_SOURCE_DIR}/include")
+endif()

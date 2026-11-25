@@ -7,7 +7,11 @@
  *
  **/
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <wchar.h>
@@ -3406,7 +3410,11 @@ void init_api(lua_State* L)
     if (!seed_initialized)
     {
         seed_lo = (fix32_t)SDL_GetPerformanceCounter();
+#ifdef USE_SDL2
+        SDL_Delay(1);
+#else
         SDL_DelayNS(SDL_NS_PER_US);
+#endif
         seed_hi = (fix32_t)SDL_GetPerformanceCounter();
         seed_initialized = true;
     }
@@ -3497,7 +3505,11 @@ void update_input(SDL_Renderer* renderer)
         {
             // Keyboard input for player 0.
             int num_keys = 0;
+#ifdef USE_SDL2
+            const Uint8* keys = SDL_GetKeyboardState(&num_keys);
+#else
             const bool* keys = SDL_GetKeyboardState(&num_keys);
+#endif
             if (keys[SDL_SCANCODE_LEFT])
             {
                 state |= (1 << 0);
@@ -3539,7 +3551,11 @@ void update_input(SDL_Renderer* renderer)
         else
         {
             int num_keys = 0;
+#ifdef USE_SDL2
+            const Uint8* keys = SDL_GetKeyboardState(&num_keys);
+#else
             const bool* keys = SDL_GetKeyboardState(&num_keys);
+#endif
 
             if (keys[SDL_SCANCODE_S])
             {
@@ -3568,6 +3584,36 @@ void update_input(SDL_Renderer* renderer)
         }
 
         // Gamepad input: first connected gamepad -> player 0, second -> player 1.
+#ifdef USE_SDL2
+        SDL_GameController* gp = SDL_GameControllerFromPlayerIndex(p);
+        if (gp)
+        {
+            if (SDL_GameControllerGetButton(gp, SDL_CONTROLLER_BUTTON_DPAD_LEFT))
+            {
+                state |= (1 << 0);
+            }
+            if (SDL_GameControllerGetButton(gp, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
+            {
+                state |= (1 << 1);
+            }
+            if (SDL_GameControllerGetButton(gp, SDL_CONTROLLER_BUTTON_DPAD_UP))
+            {
+                state |= (1 << 2);
+            }
+            if (SDL_GameControllerGetButton(gp, SDL_CONTROLLER_BUTTON_DPAD_DOWN))
+            {
+                state |= (1 << 3);
+            }
+            if (SDL_GameControllerGetButton(gp, SDL_CONTROLLER_BUTTON_B))
+            {
+                state |= (1 << 4);
+            }
+            if (SDL_GameControllerGetButton(gp, SDL_CONTROLLER_BUTTON_A))
+            {
+                state |= (1 << 5);
+            }
+        }
+#else
         SDL_Gamepad* gp = SDL_GetGamepadFromPlayerIndex(p);
         if (gp)
         {
@@ -3596,6 +3642,7 @@ void update_input(SDL_Renderer* renderer)
                 state |= (1 << 5);
             }
         }
+#endif
 
         // Touch button state (when SDL_HINT_MOUSE_TOUCH_EVENTS is used).
         if (p == 0)

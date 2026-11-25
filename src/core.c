@@ -7,7 +7,16 @@
  *
  **/
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#ifndef _WIN32
+#include <dirent.h>
+#else
+#include <windows.h>
+#endif
+#else
 #include <SDL3/SDL.h>
+#endif
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -104,6 +113,19 @@ static void update_touch_input(SDL_Renderer* renderer)
         return;
     }
 
+#ifdef USE_SDL2
+    SDL_TouchID touch_id = (SDL_GetNumTouchDevices() > 0) ? SDL_GetTouchDevice(0) : 0;
+    int num_fingers = touch_id ? SDL_GetNumTouchFingers(touch_id) : 0;
+
+    if (!renderer || num_fingers <= 0)
+    {
+        return;
+    }
+
+    // Get drawable size (physical pixels) for high-DPI displays.
+    int drawable_w, drawable_h;
+    SDL_GetRendererOutputSize(renderer, &drawable_w, &drawable_h);
+#else
     int num_fingers = 0;
     SDL_Finger** fingers = SDL_GetTouchFingers(0, &num_fingers);
 
@@ -121,6 +143,7 @@ static void update_touch_input(SDL_Renderer* renderer)
     // Get drawable size (physical pixels) for high-DPI displays.
     int drawable_w, drawable_h;
     SDL_GetRenderOutputSize(renderer, &drawable_w, &drawable_h);
+#endif
 
     if (drawable_w <= 0 || drawable_h <= 0)
     {
@@ -141,11 +164,20 @@ static void update_touch_input(SDL_Renderer* renderer)
     // Check all active fingers.
     for (int i = 0; i < num_fingers; i++)
     {
+#ifdef USE_SDL2
+        SDL_Finger* finger = SDL_GetTouchFinger(touch_id, i);
+        if (!finger) continue;
+
+        // Convert normalized touch coordinates (0.0-1.0) to physical pixel coordinates.
+        float touch_x = finger->x * drawable_w;
+        float touch_y = finger->y * drawable_h;
+#else
         if (!fingers[i]) continue;
 
         // Convert normalized touch coordinates (0.0-1.0) to physical pixel coordinates.
         float touch_x = fingers[i]->x * drawable_w;
         float touch_y = fingers[i]->y * drawable_h;
+#endif
 
         // Translate to coordinates relative to the game rendering area (screen_rect).
         float local_x = touch_x - screen_rect.x;
@@ -527,12 +559,20 @@ static int load_cart(SDL_Renderer* renderer, const char* file_name, cart_t* cart
         return 0;
     }
 
+#ifdef USE_SDL2
+    if (SDL_SetTextureBlendMode(cart->image, SDL_BLENDMODE_BLEND) < 0)
+#else
     if (!SDL_SetTextureBlendMode(cart->image, SDL_BLENDMODE_BLEND))
+#endif
     {
         SDL_Log("Couldn't set texture blend mode: %s", SDL_GetError());
     }
 
+#ifdef USE_SDL2
+    if (SDL_UpdateTexture(cart->image, NULL, image_data, width * 4) < 0)
+#else
     if (!SDL_UpdateTexture(cart->image, NULL, image_data, width * 4))
+#endif
     {
         SDL_Log("Couldn't update texture: %s", SDL_GetError());
         SDL_DestroyTexture(cart->image);
@@ -542,7 +582,11 @@ static int load_cart(SDL_Renderer* renderer, const char* file_name, cart_t* cart
 
     stbi_image_free(image_data);
 
+#ifdef USE_SDL2
+    if (SDL_SetTextureScaleMode(cart->image, SDL_ScaleModeNearest) < 0)
+#else
     if (!SDL_SetTextureScaleMode(cart->image, SDL_SCALEMODE_NEAREST))
+#endif
     {
         SDL_Log("Couldn't set texture scale mode: %s", SDL_GetError());
     }
@@ -811,11 +855,18 @@ static void select_prev_cartridge(SDL_Renderer* renderer)
 
 static void render_cartridge(SDL_Renderer* renderer)
 {
-    SDL_Window* window = SDL_GetRenderWindow(renderer);
-    int w, h;
-
     SDL_SetRenderDrawColor(renderer, 0x2d, 0x23, 0x42, 0xff);
     SDL_RenderClear(renderer);
+
+#ifdef USE_SDL2
+    SDL_RenderCopyF(renderer, get_cart()->image, NULL, &cart_rect);
+    if (overlay)
+    {
+        SDL_RenderCopyF(renderer, overlay, NULL, &cart_rect);
+    }
+#else
+    SDL_Window* window = SDL_GetRenderWindow(renderer);
+    int w, h;
 
     if (!SDL_GetWindowSize(window, &w, &h))
     {
@@ -834,11 +885,16 @@ static void render_cartridge(SDL_Renderer* renderer)
     {
         SDL_RenderTexture(renderer, overlay, NULL, &cart_rect);
     }
+#endif
 }
 
 void handle_resize(SDL_Renderer* renderer) {
     int native_w, native_h;
+#ifdef USE_SDL2
+    SDL_GetRendererOutputSize(renderer, &native_w, &native_h);
+#else
     SDL_GetRenderOutputSize(renderer, &native_w, &native_h);
+#endif
 
     int base_w = 160;
     int base_h = 205;
@@ -870,6 +926,59 @@ void handle_resize(SDL_Renderer* renderer) {
 #endif
 }
 
+#ifdef USE_SDL2
+static bool enumerate_carts(const char* path)
+{
+#ifndef _WIN32
+    DIR* dir = opendir(path);
+    if (!dir)
+    {
+        return false;
+    }
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        const char* fname = entry->d_name;
+        if (SDL_strstr(fname, ".PNG") || SDL_strstr(fname, ".png"))
+        {
+            available_carts = SDL_realloc(available_carts, (num_carts + 1) * sizeof(char*));
+            SDL_asprintf(&available_carts[num_carts], "%s/%s", path, fname);
+            num_carts++;
+        }
+    }
+    closedir(dir);
+    return true;
+#else
+    char* pattern = NULL;
+    if (SDL_asprintf(&pattern, "%s\\*", path) < 0)
+    {
+        return false;
+    }
+    WIN32_FIND_DATAA ffd;
+    HANDLE hFind = FindFirstFileA(pattern, &ffd);
+    SDL_free(pattern);
+    if (hFind == INVALID_HANDLE_VALUE)
+    {
+        return false;
+    }
+    do
+    {
+        if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            if (SDL_strstr(ffd.cFileName, ".PNG") || SDL_strstr(ffd.cFileName, ".png"))
+            {
+                available_carts = SDL_realloc(available_carts, (num_carts + 1) * sizeof(char*));
+                SDL_asprintf(&available_carts[num_carts], "%s\\%s", path, ffd.cFileName);
+                num_carts++;
+            }
+        }
+    } while (FindNextFileA(hFind, &ffd));
+    FindClose(hFind);
+    return true;
+#endif
+}
+#else
 static SDL_EnumerationResult dir_callback(void* userdata, const char* dirname, const char* fname)
 {
     if (SDL_strstr(fname, ".PNG") || (SDL_strstr(fname, ".png")))
@@ -881,6 +990,7 @@ static SDL_EnumerationResult dir_callback(void* userdata, const char* dirname, c
 
     return SDL_ENUM_CONTINUE;
 }
+#endif
 
 static int load_overlay(SDL_Renderer* renderer)
 {
@@ -924,12 +1034,20 @@ static int load_overlay(SDL_Renderer* renderer)
         return 0;
     }
 
+#ifdef USE_SDL2
+    if (SDL_SetTextureBlendMode(overlay, SDL_BLENDMODE_BLEND) < 0)
+#else
     if (!SDL_SetTextureBlendMode(overlay, SDL_BLENDMODE_BLEND))
+#endif
     {
         SDL_Log("Couldn't set texture blend mode: %s", SDL_GetError());
     }
 
+#ifdef USE_SDL2
+    if (SDL_UpdateTexture(overlay, NULL, image_data, width * 4) < 0)
+#else
     if (!SDL_UpdateTexture(overlay, NULL, image_data, width * 4))
+#endif
     {
         SDL_Log("Couldn't update texture: %s", SDL_GetError());
         SDL_DestroyTexture(overlay);
@@ -939,7 +1057,11 @@ static int load_overlay(SDL_Renderer* renderer)
 
     stbi_image_free(image_data);
 
+#ifdef USE_SDL2
+    if (SDL_SetTextureScaleMode(overlay, SDL_ScaleModeNearest) < 0)
+#else
     if (!SDL_SetTextureScaleMode(overlay, SDL_SCALEMODE_NEAREST))
+#endif
     {
         SDL_Log("Couldn't set texture scale mode: %s", SDL_GetError());
     }
@@ -969,7 +1091,11 @@ bool init_core(SDL_Renderer* renderer)
         return false;
     }
 
+#ifdef USE_SDL2
+    if (!enumerate_carts(path))
+#else
     if (!SDL_EnumerateDirectory(path, dir_callback, NULL))
+#endif
     {
         SDL_Log("Couldn't open directory: %s", path);
         SDL_free(path);
@@ -1021,10 +1147,49 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
 {
     switch (event->type)
     {
+#ifdef USE_SDL2
+        case SDL_QUIT:
+#else
         case SDL_EVENT_QUIT:
+#endif
         {
             return false;
         }
+#ifdef USE_SDL2
+        case SDL_WINDOWEVENT:
+        {
+            if (event->window.event == SDL_WINDOWEVENT_RESIZED)
+            {
+                handle_resize(renderer);
+            }
+            return true;
+        }
+        case SDL_CONTROLLERDEVICEADDED:
+        {
+            const int which = event->cdevice.which;
+            SDL_GameController* gamepad = SDL_GameControllerOpen(which);
+            if (!gamepad)
+            {
+                SDL_Log("Joystick #%d could not be opened: %s", which, SDL_GetError());
+            }
+            else
+            {
+                SDL_Log("Joystick #%d connected: %s", which, SDL_GameControllerName(gamepad));
+            }
+            return true;
+        }
+        case SDL_CONTROLLERDEVICEREMOVED:
+        {
+            const SDL_JoystickID which = event->cdevice.which;
+            SDL_GameController* gamepad = SDL_GameControllerFromInstanceID(which);
+            if (gamepad)
+            {
+                SDL_GameControllerClose(gamepad);  /* the joystick was unplugged. */
+            }
+            return true;
+        }
+        case SDL_KEYDOWN:
+#else
         case SDL_EVENT_WINDOW_RESIZED:
         {
             handle_resize(renderer);
@@ -1055,17 +1220,25 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
             return true;
         }
         case SDL_EVENT_KEY_DOWN:
+#endif
         {
+#ifdef USE_SDL2
+            SDL_Keycode key = event->key.keysym.sym;
+#else
+            SDL_Keycode key = event->key.key;
+#endif
             if (state == STATE_MENU)
             {
                 if (event->key.repeat) // No key repeat.
                 {
                     break;
                 }
-                switch (event->key.key)
+                switch (key)
                 {
 #ifndef __EMSCRIPTEN__
+#ifndef USE_SDL2
                     case SDLK_SOFTLEFT:
+#endif
                     case SDLK_ESCAPE:
                         return false;
 #endif
@@ -1073,9 +1246,15 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
                     case SDLK_5:
                     case SDLK_KP_5:
 #endif
+#ifdef USE_SDL2
+                    case SDLK_c:
+                    case SDLK_x:
+                    case SDLK_z:
+#else
                     case SDLK_C:
                     case SDLK_X:
                     case SDLK_Z:
+#endif
                     case SDLK_SELECT:
                     case SDLK_SPACE:
                         run_cartridge(renderer);
@@ -1092,12 +1271,14 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
             }
             else if (state == STATE_EMULATOR)
             {
-                switch (event->key.key)
+                switch (key)
                 {
                     case SDLK_EQUALS:
                         SDL_Log("Screen data CRC: 0x%x", crc32(pico8_ram, 0x6000, 0x2000));
                         break;
+#ifndef USE_SDL2
                     case SDLK_SOFTLEFT:
+#endif
                     case SDLK_ESCAPE:
                         destroy_vm();
                         reset_memory();
@@ -1110,6 +1291,47 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
             }
             break;
         }
+#ifdef USE_SDL2
+        case SDL_CONTROLLERBUTTONDOWN:
+        {
+            Uint8 button = event->cbutton.button;
+
+            if (state == STATE_MENU)
+            {
+                switch (button)
+                {
+                    case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                        select_prev_cartridge(renderer);
+                        render_cartridge(renderer);
+                        return true;
+                    case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                        select_next_cartridge(renderer);
+                        render_cartridge(renderer);
+                        return true;
+                    case SDL_CONTROLLER_BUTTON_B:
+                    case SDL_CONTROLLER_BUTTON_A:
+                        run_cartridge(renderer);
+                        return true;
+                }
+            }
+            else if (state == STATE_EMULATOR)
+            {
+                switch (button)
+                {
+                    case SDL_CONTROLLER_BUTTON_BACK:
+                    case SDL_CONTROLLER_BUTTON_START:
+                        destroy_vm();
+                        reset_memory();
+                        state = STATE_MENU;
+                        has_draw = false;
+                        has_update = false;
+                        has_update60 = false;
+                        return true;
+                }
+                break;
+            }
+        }
+#else
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
         {
             const SDL_JoystickID which = event->gbutton.which;
@@ -1149,13 +1371,22 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
                 break;
             }
         }
+#endif
+#ifdef USE_SDL2
+        case SDL_FINGERDOWN:
+#else
         case SDL_EVENT_FINGER_DOWN:
+#endif
         {
             if (state == STATE_MENU)
             {
                 // Use drawable size (physical pixels) for high-DPI displays
                 int drawable_w, drawable_h;
+#ifdef USE_SDL2
+                SDL_GetRendererOutputSize(renderer, &drawable_w, &drawable_h);
+#else
                 SDL_GetRenderOutputSize(renderer, &drawable_w, &drawable_h);
+#endif
 
                 // Get scale factor from current cart_rect.
                 int scale = (int)(cart_rect.w / 160.0f);
@@ -1212,7 +1443,11 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
                 // Fallback event-based touch handling for emulator mode
                 // Combined with polling-based approach for better reliability.
                 int drawable_w, drawable_h;
+#ifdef USE_SDL2
+                SDL_GetRendererOutputSize(renderer, &drawable_w, &drawable_h);
+#else
                 SDL_GetRenderOutputSize(renderer, &drawable_w, &drawable_h);
+#endif
 
                 if (drawable_w > 0 && drawable_h > 0)
                 {
@@ -1259,14 +1494,22 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
             }
             break;
         }
+#ifdef USE_SDL2
+        case SDL_FINGERUP:
+#else
         case SDL_EVENT_FINGER_UP:
+#endif
         {
             if (state == STATE_EMULATOR && screen_rect.w > 0)
             {
                 // Fallback event-based touch handling for emulator mode
                 // Clear button state for released finger.
                 int drawable_w, drawable_h;
+#ifdef USE_SDL2
+                SDL_GetRendererOutputSize(renderer, &drawable_w, &drawable_h);
+#else
                 SDL_GetRenderOutputSize(renderer, &drawable_w, &drawable_h);
+#endif
 
                 if (drawable_w > 0 && drawable_h > 0)
                 {
@@ -1306,11 +1549,16 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
             }
             break;
         }
+#ifdef USE_SDL2
+        case SDL_MOUSEBUTTONDOWN:
+#else
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
+#endif
         {
             // When SDL_HINT_MOUSE_TOUCH_EVENTS is enabled, touch input comes as mouse events.
             if (event->button.button == SDL_BUTTON_LEFT)
             {
+#ifndef USE_SDL2
                 SDL_Window* window = SDL_GetRenderWindow(renderer);
                 int window_w, window_h;
 
@@ -1319,6 +1567,7 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
                     SDL_Log("Unable to get window size: %s", SDL_GetError());
                     break;
                 }
+#endif
 
                 // Get mouse position (which is touch position when using MOUSE_TOUCH_EVENTS).
                 float mouse_x = event->button.x;
@@ -1413,7 +1662,11 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
             }
             break;
         }
+#ifdef USE_SDL2
+        case SDL_MOUSEBUTTONUP:
+#else
         case SDL_EVENT_MOUSE_BUTTON_UP:
+#endif
         {
             // Clear touch button state when touch is released.
             if (event->button.button == SDL_BUTTON_LEFT && state == STATE_EMULATOR)
@@ -1439,7 +1692,11 @@ bool iterate_core(SDL_Renderer* renderer)
     }
     else if (state == STATE_EMULATOR)
     {
+#ifdef USE_SDL2
+        Uint64 frame_start = SDL_GetTicks64();
+#else
         Uint64 frame_start = SDL_GetTicks();
+#endif
         Uint32 frame_ms = has_update60 ? 1000u / 60u : 1000u / 30u;
         // Expose timing to API for stat(1) CPU usage reporting.
         pico8_frame_start = frame_start;
@@ -1484,7 +1741,11 @@ bool iterate_core(SDL_Renderer* renderer)
         SDL_RenderPresent(renderer);
 
 #ifndef __SYMBIAN32__
+#ifdef USE_SDL2
+        Uint64 elapsed = SDL_GetTicks64() - frame_start;
+#else
         Uint64 elapsed = SDL_GetTicks() - frame_start;
+#endif
         if (elapsed < frame_ms)
         {
             SDL_Delay((Uint32)(frame_ms - elapsed));

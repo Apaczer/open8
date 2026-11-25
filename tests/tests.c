@@ -7,7 +7,11 @@
  *
  **/
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #include <stdlib.h>
 #include "z8lua/lua.h"
 #include "z8lua/lualib.h"
@@ -15,8 +19,10 @@
 
 static uint8_t ram[65536];
 
-int main()
+int main(int argc, char* argv[])
 {
+    (void)argc;
+    (void)argv;
     lua_State* vm = luaL_newstate();
     if (!vm)
     {

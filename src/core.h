@@ -10,7 +10,11 @@
 #ifndef CORE_H
 #define CORE_H
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 

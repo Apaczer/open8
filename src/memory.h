@@ -10,7 +10,12 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#include <stdbool.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #include <stdint.h>
 
 #define RAM_SIZE 0x10000

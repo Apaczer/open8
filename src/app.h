@@ -10,7 +10,12 @@
 #ifndef APP_H
 #define APP_H
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#include <stdbool.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 
 extern SDL_FRect cart_rect, screen_rect;
 

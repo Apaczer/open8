@@ -10,7 +10,11 @@
 #ifndef API_H
 #define API_H
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #include <stdint.h>
 #include <stdbool.h>
 

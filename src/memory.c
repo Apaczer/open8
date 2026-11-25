@@ -7,7 +7,11 @@
  *
  **/
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #include <stdint.h>
 
 #include "auxiliary.h"
@@ -22,7 +26,11 @@ static uint32_t crc32_table[256];
 static uint32_t palette_map[256]; // 0-15 normal, 128-143 secret colors
 
 static SDL_Texture* screen;
+#ifdef USE_SDL2
+static Uint32 screen_format;
+#else
 static SDL_PixelFormat screen_format;
+#endif
 
 SDL_FRect screen_rect;
 
@@ -38,6 +46,20 @@ bool init_memory(SDL_Renderer* renderer)
 
 	screen_format = SDL_PIXELFORMAT_UNKNOWN;
 
+#ifdef USE_SDL2
+	SDL_RendererInfo info;
+	if (SDL_GetRendererInfo(renderer, &info) == 0) {
+		for (Uint32 i = 0; i < info.num_texture_formats; ++i) {
+			if ((SDL_BYTESPERPIXEL(info.texture_formats[i]) != 1 &&
+				SDL_BYTESPERPIXEL(info.texture_formats[i]) != 2 &&
+				SDL_BYTESPERPIXEL(info.texture_formats[i]) != 4) ||
+				!SDL_ISPIXELFORMAT_PACKED(info.texture_formats[i]))
+				break;
+			screen_format = info.texture_formats[i];
+			break;
+		}
+	}
+#else
 	const SDL_PixelFormat* texture_formats = (const SDL_PixelFormat*)SDL_GetPointerProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_TEXTURE_FORMATS_POINTER, NULL);
 	if (texture_formats) {
 		// Use the first compatible format that the renderer supports
@@ -51,6 +73,7 @@ bool init_memory(SDL_Renderer* renderer)
 			break;
 		}
 	}
+#endif
 
 	// If all else fails, use RGBA32 as a fallback.
 	if (screen_format == SDL_PIXELFORMAT_UNKNOWN)
@@ -65,18 +88,33 @@ bool init_memory(SDL_Renderer* renderer)
 		return false;
 	}
 
+#ifdef USE_SDL2
+	if (SDL_SetTextureScaleMode(screen, SDL_ScaleModeNearest) < 0)
+#else
 	if (!SDL_SetTextureScaleMode(screen, SDL_SCALEMODE_NEAREST))
+#endif
 	{
 		SDL_Log("Couldn't set texture scale mode: %s", SDL_GetError());
 	}
 
 	uint8_t r, g, b;
+#ifdef USE_SDL2
+	SDL_PixelFormat* details = SDL_AllocFormat(screen_format);
+	if (details) {
+		for (int i = 0; i < 256; i++) {
+			color_lookup(i, &r, &g, &b);
+			palette_map[i] = SDL_MapRGB(details, r, g, b);
+		}
+		SDL_FreeFormat(details);
+	}
+#else
 	const SDL_PixelFormatDetails* details = SDL_GetPixelFormatDetails(screen_format);
 
 	for (int i = 0; i < 256; i++) {
 		color_lookup(i, &r, &g, &b);
 		palette_map[i] = SDL_MapRGB(details, NULL, r, g, b);
 	}
+#endif
 
 	init_crc32();
 
@@ -203,7 +241,11 @@ void update_from_virtual_memory(SDL_Renderer* renderer)
 	void* pixels;
 	int pitch;
 
+#ifdef USE_SDL2
+	if (SDL_LockTexture(screen, NULL, &pixels, &pitch) == 0)
+#else
 	if (SDL_LockTexture(screen, NULL, &pixels, &pitch))
+#endif
 	{
 		uint8_t* row = (uint8_t*)pixels;
 		switch (SDL_BYTESPERPIXEL(screen_format))
@@ -248,7 +290,11 @@ void update_from_virtual_memory(SDL_Renderer* renderer)
 		SDL_UnlockTexture(screen);
 	}
 
+#ifdef USE_SDL2
+	SDL_RenderCopyF(renderer, screen, NULL, &screen_rect);
+#else
 	SDL_RenderTexture(renderer, screen, NULL, &screen_rect);
+#endif
 }
 
 uint32_t crc32(const uint8_t* data, size_t start, size_t length)

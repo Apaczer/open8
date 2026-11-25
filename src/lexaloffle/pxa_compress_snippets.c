@@ -26,7 +26,11 @@
 
 */
 
+#ifdef USE_SDL2
+#include <SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #include "p8_compress.h"
 
 #ifndef MAX

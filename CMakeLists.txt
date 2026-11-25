@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 option (BUILD_TESTS "Build Unit Tests" OFF)
+option (USE_SDL2 "Build with SDL2 instead of SDL3" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -13,8 +14,12 @@ elseif(VITA)
 else()
   set(EXPORT_DIR ${PROJECT_SOURCE_DIR}/export)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${EXPORT_DIR})
-  include(get_SDL3)
-  get_SDL3("3.4.10")
+  if (USE_SDL2)
+    find_package(SDL2 REQUIRED)
+  else()
+    include(get_SDL3)
+    get_SDL3("3.4.10")
+  endif()
 endif()
 
 set(open8_sources
@@ -37,7 +42,15 @@ add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-target_link_libraries(open8 PRIVATE SDL3::SDL3)
+if (USE_SDL2)
+  target_compile_definitions(open8 PRIVATE USE_SDL2)
+  if (TARGET SDL2::SDL2main)
+    target_link_libraries(open8 PRIVATE SDL2::SDL2main)
+  endif()
+  target_link_libraries(open8 PRIVATE SDL2::SDL2)
+else()
+  target_link_libraries(open8 PRIVATE SDL3::SDL3)
+endif()
 
 if (NGAGESDK)
   set(open8_app_sources
