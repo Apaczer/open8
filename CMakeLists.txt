@@ -11,6 +11,9 @@ if (NGAGESDK)
   find_package(SDL3 REQUIRED)
 elseif(VITA)
   find_package(SDL3 REQUIRED)
+elseif(MIYOO)
+  find_package(SDL2 REQUIRED)
+  set(USE_SDL2 ON CACHE BOOL "Enabling SDL2 usage" FORCE)
 else()
   set(EXPORT_DIR ${PROJECT_SOURCE_DIR}/export)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${EXPORT_DIR})
@@ -127,6 +130,19 @@ if (NINTENDO_3DS)
     open8
     ROMFS "${ROMFS_DIR}"
     SMDH "${SMDH_FILE}")
+
+elseif(MIYOO)
+  target_compile_definitions(open8 PRIVATE __MIYOO__)
+
+  target_compile_options(open8 PRIVATE
+    $<$<CONFIG:Release>:-O3>
+    $<$<CONFIG:Release>:-ffast-math>
+    $<$<CONFIG:Release>:-funroll-loops>
+    $<$<CONFIG:Release>:-fomit-frame-pointer>)
+
+  target_compile_options(open8 PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
 
 elseif(PLATFORM_DREAMCAST)
   # FIXME: This should be inherited from the SDL3::SDL3 target

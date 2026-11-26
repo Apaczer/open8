@@ -3535,6 +3535,15 @@ void update_input(SDL_Renderer* renderer)
             {
                 state |= (1 << 5);
             }
+#elif __MIYOO__
+            if (keys[SDL_SCANCODE_LALT])
+            {
+                state |= (1 << 4);
+            }
+            if (keys[SDL_SCANCODE_LCTRL])
+            {
+                state |= (1 << 5);
+            }
 #else
             if (keys[SDL_SCANCODE_Z] || keys[SDL_SCANCODE_Y] || keys[SDL_SCANCODE_C] ||
                 keys[SDL_SCANCODE_N] || keys[SDL_SCANCODE_KP_MULTIPLY])

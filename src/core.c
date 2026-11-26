@@ -1278,7 +1278,11 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
 #endif
             if (!event->key.repeat)
             {
+#ifdef __MIYOO__
+                if (key == SDLK_LSHIFT)
+#else
                 if (key == SDLK_F2)
+#endif
                 {
                     static const char* const mode_names[] = { "integer", "aspect-fit", "stretch" };
                     scale_mode = (scale_mode + 1) % SCALE_MODE_COUNT;
@@ -1291,7 +1295,11 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
                     }
                     return true;
                 }
+#ifdef __MIYOO__
+                else if (key == SDLK_SPACE)
+#else
                 else if (key == SDLK_F3)
+#endif
                 {
                     linear_filter = !linear_filter;
                     SDL_Log("Texture filter: %s", linear_filter ? "linear" : "nearest");
@@ -1326,6 +1334,10 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
                     case SDLK_5:
                     case SDLK_KP_5:
 #endif
+#ifdef __MIYOO__
+                    case SDLK_LALT:
+                    case SDLK_LCTRL:
+#endif
 #ifdef USE_SDL2
                     case SDLK_c:
                     case SDLK_x:
@@ -1336,7 +1348,9 @@ bool handle_events(SDL_Renderer* renderer, SDL_Event* event)
                     case SDLK_Z:
 #endif
                     case SDLK_SELECT:
+#ifndef __MIYOO__
                     case SDLK_SPACE:
+#endif
                         run_cartridge(renderer);
                         return true;
                     case SDLK_LEFT:

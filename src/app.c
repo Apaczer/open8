@@ -69,6 +69,9 @@ bool init_app(SDL_Renderer** renderer, SDL_Window* window)
 #elif __SYMBIAN__
     window_w = 176;
     window_h = 208;
+#elif __MIYOO__ 
+    window_w = 320;
+    window_h = 240;
 #else
     window_w = 160 * 2;
     window_h = 205 * 2;
